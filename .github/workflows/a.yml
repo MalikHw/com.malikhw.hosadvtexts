@@ -1,0 +1,59 @@
+name: Build & Release APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Get version name from build.gradle
+        id: version
+        run: |
+          VERSION=$(grep "versionName" app/build.gradle | head -1 | awk -F'"' '{print $2}')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION-$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Rename APK
+        run: |
+          mv app/build/outputs/apk/release/app-release-unsigned.apk \
+             app/build/outputs/apk/release/HosAdvTextures-${{ steps.version.outputs.tag }}.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Hos Advanced Textures ${{ steps.version.outputs.tag }}"
+          body: |
+            **Automated build** from commit ${{ github.sha }}
+
+            ### What's new
+            ${{ github.event.head_commit.message }}
+
+            ### Install
+            Download the APK below and sideload it on your Xiaomi / Redmi / POCO device.
+            > Requires [Shizuku](https://shizuku.rikka.app/) to be running.
+          files: app/build/outputs/apk/release/HosAdvTextures-${{ steps.version.outputs.tag }}.apk
+          make_latest: true
